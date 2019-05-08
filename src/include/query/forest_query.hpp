@@ -9,7 +9,7 @@
 /// furnished to do so, subject to the following conditions:
 ///
 /// The above copyright notice and this permission notice shall be included in
-/// all copies or substantial portions ofthe Software.
+/// all copies or substantial portions of the Software.
 ///
 /// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 /// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
@@ -26,40 +26,47 @@
 
 #pragma once
 
-#include "matrix.hpp"
-#include "parameters.hpp"
+#include <bitset>
+#include <functional>
+#include <vector>
 
-#include "utils/calculator.hpp"
+#include "sorter/radix_sorter.hpp"
+
+#include "../parameters.hpp"
+#include "../query.hpp"
+#include "../index.hpp"
 
 namespace ss {
-    /**
-     * A interface of index structure which hold all base data.
-     * Specific Search method is provide in "include/query/" and they implement the interface of "include/query.hpp"
-     */
+
+
     template <class DataType>
-    class Index {
-
+    class ForestQuery : public Query<DataType > {
     protected:
-        const parameter & _para;
+        vector<bool >                                    _visited;
     public:
-        explicit Index(const parameter& para): _para(para) {}
+        ~ForestQuery() { }
 
-        /**
-         * For Locality Sensitive Hashing, random vectors will be generated for projection and the training data won't be used
-         * For Learning to Hashing, hashing functions will be learned
-         * For Graph Method, nothing will happen.
-         */    
-        virtual void Train(const Matrix<DataType> &) {}
+        explicit ForestQuery(
+                Index<DataType >                 *index,
+                const DataType                   *query,
+                const Metric<DataType >          &metric,
+                const Matrix<DataType >          &data,
+                const parameter                  &para):
+                Query<DataType >(index, query, metric, data, para),
+                _visited(data.getSize(), false) {}
 
-        /**
-         * all base data will be stored in this index structure.
-         */
-        virtual void Add(const Matrix<DataType> &) {}
+        void ProbeItems(const int num_items) {
+            this->_index->Search(this->_query, [&](int id) {this->RepeatProbe(id); });
+        }
 
-        virtual void Search(const DataType* query, const std::function<void (int)>& prober) {}
+        void RepeatProbe(int id) {
+            if (! _visited[id]) {
+                _visited[id] = true;
+                this->probe(id);
+            }
+        }
 
-        virtual ~Index() {}
+        const vector<int> & NextBucket() override {}
     };
 
-}  // namespace ss
-
+} // namespace ss

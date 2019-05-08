@@ -37,6 +37,7 @@
 
 #include "parameters.hpp"
 #include "index.hpp"
+#include "executor.hpp"
 #include "matrix.hpp"
 #include "metric.hpp"
 #include "utils/util.hpp"
@@ -44,44 +45,9 @@
 using namespace std;
 using namespace ss;
 
-void LoadOptions(int argc, char **argv, parameter &para) {
-    namespace po = boost::program_options;
-
-    po::options_description opts("Allowed options");
-    opts.add_options()
-        ("help,h", "help info")
-        ("num_bit,l",        po::value<int   >(&para.num_bit)         ->default_value(32)  , "num of hash bit")
-        ("forest_size,f",    po::value<int   >(&para.forest_size)     ->default_value(16)  , "num of hash tables, trees")
-        ("graph_K",          po::value<int   >(&para.graph_K)         ->default_value(50)  , "number of neighbors")
-        // TODO(Xinyan): to support multi thread
-        ("num_thread",       po::value<int   >(&para.num_thread)      ->default_value(1),    "num of thread")
-        ("dim,d",            po::value<int   >(&para.dim)             ->default_value(-1),   "origin dimension of data")
-        ("transformed_dim",  po::value<int   >(&para.transformed_dim) ->default_value(0)  ,  "origin dimension of data")
-        ("num_sub_data_set", po::value<int   >(&para.num_sub_data_set)->default_value(-1),   "number of sub data set")
-        ("r,r",              po::value<float >(&para.r)               ->default_value(2.5),  "float 'w' in e2lsh")
-        ("kmeans_centers",   po::value<int   >(&para.kmeans_centers)  ->default_value(32),  "number of centers")
-        ("num_codebook",     po::value<int   >(&para.num_codebook)    ->default_value(2),    "number of codebook")
-        ("iteration,i",      po::value<int   >(&para.iteration)       ->default_value(10),   "training iterations")
-
-        ("train_data,t",     po::value<string >(&para.train_data),                         "data for training")
-        ("base_data,b",      po::value<string >(&para.base_data) ,                         "data stored in index")
-        ("query_data,q",     po::value<string >(&para.query_data),                         "data for query")
-        ("ground_truth,g",   po::value<string >(&para.ground_truth),                       "ground truth file")
-        ("graph_knn",        po::value<string >(&para.graph_knn),                          "k nearest neighbors")
-    ;
-
-    po::variables_map vm;
-    po::store(po::parse_command_line(argc, argv, opts), vm);
-    po::notify(vm);
-
-    if (vm.count("help")) {
-        cout << opts << endl;
-        exit(0);
-    }
-}
 
 template <class DataType, class IndexType, class QueryType, class MetricType=ss::EuclidMetric<DataType> >
-int SearchIterative(parameter &para) {
+int Search(parameter &para) {
     ss::timer time_recorder;
 
     cout    << "#==============================================================================" << endl;
@@ -132,20 +98,15 @@ int SearchIterative(parameter &para) {
          << "avg items"
          << "\n";
 
+    time_recorder.restart();
 
+    vector<QueryType * >                  queries(para.query_size);
+    for (int i = 0; i < para.query_size; i++) {
+        /// determine the sequence of probing bucket(except probing by looking up)
+        queries[i] = (new QueryType(&index, query_data[i], metric, base_data, para) );
+    }
 
-    for (int num_items = 1; num_items / 2 < para.base_size; num_items *= 2 ) {
-        time_recorder.restart();
-
-        vector<QueryType * >                  queries(para.query_size);
-        for (int i = 0; i < para.query_size; i++) {
-            /// determine the sequence of probing bucket(except probing by looking up)
-            queries[i] = (new QueryType(&index, query_data[i], metric, base_data, para) );
-        }
-
-        if ( num_items > para.base_size )
-            num_items = para.base_size;
-
+    {
         vector<vector<pair<float, int > > >   current_topK(para.query_size);    //TODO copy should be avoided
         vector<int >                          item_probed(para.query_size);
 
@@ -153,7 +114,7 @@ int SearchIterative(parameter &para) {
 
             for (int i = 0; i <  para.query_size; i++) {  /// probing
                 /// probe more bucket util the number of probed item is no less than {$numItems}
-                queries[i]->ProbeItems(num_items);
+                queries[i]->ProbeItems(-1);
                 item_probed[i]  = queries[i]->GetNumItemsProbed();
                 current_topK[i] = queries[i]->GetSortedTopK();
             }
@@ -165,7 +126,7 @@ int SearchIterative(parameter &para) {
 
         {
             Bencher current_bench(current_topK, true);
-            cout << num_items                                                << spliter
+            cout << -1                                                << spliter
                  << timer_elapsed                                            << spliter
                  << truth_bench.avg_recall(current_bench)                    << spliter
                  << truth_bench.avg_precision(current_bench, item_probed)    << spliter
@@ -173,9 +134,10 @@ int SearchIterative(parameter &para) {
                  << truth_bench.avg_items(item_probed)                       << "\n";
         }
 
-        for (int i = 0; i < para.query_size; i++) {
-            delete  queries[i];
-        }
+    }
+
+    for (int i = 0; i < para.query_size; i++) {
+        delete  queries[i];
     }
 
     return 0;

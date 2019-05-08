@@ -33,14 +33,13 @@
 #include <iostream>
 #include <string>
 #include <vector>
-
+#include <Eigen/Dense>
 #include "utils/calculator.hpp"
 
 namespace ss {
-
+    template <typename T> using EigenMatrix = Eigen::Matrix< T , Eigen::Dynamic , Eigen::Dynamic >;
     template <class T>
     class Matrix {
-
         int _dimension;
         int _size;
         T * _data;
@@ -53,6 +52,14 @@ namespace ss {
         explicit Matrix(const std::string &path): _data(NULL) {
             loadFvecs(this, path);
         }
+
+        explicit Matrix(const vector<vector<T > > &data) : _data(NULL) {
+            this->reset(data[0].size(), data.size());
+            for (int i = 0; i < data.size(); ++i) {
+                std::copy(std::begin(data[i]), std::end(data[i]), (*this)[i]);
+            }
+        }
+
         Matrix(const Matrix& M) = delete;
         Matrix& operator=(const Matrix& M)  = delete;
 
@@ -77,6 +84,19 @@ namespace ss {
 
         int getSize() const {
             return _size;
+        }
+
+        EigenMatrix< T >  GetEigenMatrix() const {
+            const Matrix & data = *this;
+            EigenMatrix< T >  matrix_data(data.getSize(), data.getDim());
+            for (int i = 0; i < data.getSize(); ++i) { /// TODO(Xinyan): to be improved
+                std::vector<T > vals(data.getDim());
+                for (int dimension = 0; dimension != data.getDim(); ++dimension) {
+                    vals[dimension] = data[i][dimension];
+                }
+                matrix_data.row(i) = Eigen::Map<Eigen::VectorXf>(&vals[0], data.getDim());
+            }
+            return matrix_data;
         }
 
         std::vector<T> calNorms() const {

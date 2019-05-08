@@ -22,7 +22,7 @@ script:
   - dpkg -S /usr/include/boost/version.hpp
   - ls /usr/include/eigen3/
   # Run your build commands next\
-  - mkdir release
-  - cd release
+  - mkdir src/release
+  - cd src/release
   - cmake ..
-  - make
+  - make all
